@@ -1,0 +1,101 @@
+---
+title: "Provider Lookup"
+author: "Le Luo"
+date: "2024-12-21"
+output: pdf_document
+---
+
+```{r}
+library(shiny)
+library(dplyr)
+library(readxl)
+library(DT)
+
+provider_data <- read_xlsx("/Users/jio/Desktop/EMRTS intern/Provider Lookup Project/NPI NAME INFO.xlsx")%>%
+  mutate(
+    `Provider Name` = paste(
+      `Provider First Name`, 
+      ifelse(is.na(`Provider Middle Name`) | `Provider Middle Name` == "", "", `Provider Middle Name`), 
+      `Provider Last Name`
+    ), # merge the separate name parts into full provider name
+    Address = paste(
+      `Address Line 1`, 
+      ifelse(is.na(`Address Line 2`) | `Address Line 2` == "", "", paste(`Address Line 2`, ",", sep = " ")), 
+      City, 
+      State, 
+      `Postal Code`, # merge the separate address parts in to full Address
+      sep = ", "
+    )
+  )
+```
+
+```{r}
+ui <- fluidPage(
+  titlePanel("Healthcare Provider Lookup Program"),
+  sidebarLayout(
+    sidebarPanel(
+      textInput("npi", "NPI:", ""), 
+      textInput("first_name", "Provider First Name:", ""),
+      textInput("middle_name", "Provider Middle Name:", ""),
+      textInput("last_name", "Provider Last Name:", ""), 
+      textInput("organization_name", "Provider Organization Name:", ""),
+      selectInput("entity_type", "Entity Type:", choices = c("All", "Individual" = "1", "Organization" = "2"), selected = "All"),
+      actionButton("search", "Search") 
+    ),
+    mainPanel(
+      h3("Search Results"),
+      dataTableOutput("results_table") 
+    )
+  )
+)
+```
+
+```{r}
+server <- function(input, output) {
+
+   search_results <- eventReactive(input$search, {
+  data <- provider_data
+  
+  if (input$npi != "") {
+    data <- data %>% filter(grepl(input$npi, NPI, ignore.case = TRUE))
+  }
+  if (input$first_name != "") {
+    data <- data %>% filter(grepl(input$first_name, `Provider First Name`, ignore.case = TRUE))
+  }
+  if (input$middle_name != "") {
+    data <- data %>% filter(grepl(input$middle_name, `Provider Middle Name`, ignore.case = TRUE))
+  }
+  if (input$last_name != "") {
+    data <- data %>% filter(grepl(input$last_name, `Provider Last Name`, ignore.case = TRUE))
+  }
+  if (input$organization_name != "") {
+    data <- data %>% filter(grepl(input$organization_name, `Provider Organization Name`, ignore.case = TRUE))
+  }
+  if (input$entity_type != "All") {
+    data <- data %>% filter(`Entity Type Code` == input$entity_type)
+  }
+  
+  if (nrow(data) == 0) {
+    return(data.frame(Message = "No results found"))
+  }
+  
+  return(data)
+})
+
+ output$results_table <- renderDataTable({
+  results <- search_results()
+  results <- results %>%
+    select(NPI, 
+           `Provider Name`, 
+           `Provider Organization Name`, 
+           `Entity Type Code`, 
+           Address, 
+           `Telephone Number`)
+  results
+})
+}
+```
+
+```{r}
+shinyApp(ui, server)
+```
